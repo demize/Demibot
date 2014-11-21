@@ -91,43 +91,71 @@ site.setUserAgent("Demibot/0.1 (https://github.com/demize/Demibot; demize on enw
 site.login(uname, pword)
 
 logpage = page.Page(site, title="User:Demibot/log")
-#logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
+logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
 
-params = {"action" : "query", "generator" : "prefixsearch", "gpssearch" : "User_Talk:Demize/Archive"}
+params = {"action" : "query", "generator" : "embeddedin", "geititle" : "User:HBC_Archive_Indexerbot/OptIn", "geinamespace" : "1|3|5|7|9", "geilimit" : "500", "rawcontinue" : ""}
 request = api.APIRequest(site, params)
+logpage.edit(appendtext="~~~~~: Building list of talk pages to index the archives of...<br />\n")
 result = request.query()
+list = pagelist.listFromQuery(site, result['query']['pages'])
+
+logpage.edit(appendtext="~~~~~: List of pages contains " + str(len(list)) + " pages.<br />\n")
+#logpage.edit(appendtext="~~~~~: Generating index for User Talk:Demize only<br />\n")
+logpage.edit(appendtext="~~~~~: Skipping index generation and exiting...")
+
+exit(0)
+
 currentpagetitle = "User Talk:Demize"
 currentpage = page.Page(site, title=currentpagetitle)
-arguments = regex3.search(currentpage.getWikiText()).replace("\n", "").split("|")
+arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").split("|")
 
 target = ""
 pages = []
-zeroes = 0
-indexhere = false
+zeros = 0
+indexhere = False
 template = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template")
 
+# Make sure we get the leading zeros first
 for arg in arguments:
-    argparts = arg.split("=")
+    argparts = arg.split("=", 1)
     argparam = argparts[0].lower()
+    if argparam == "leading_zeros":
+        zeros = int(argparts[1])
+        break
+
+# Now loop through everything else
+for arg in arguments:
+    argparts = arg.split("=", 1)
+    argparam = argparts[0].lower()
+    if len(argparts) < 2:
+        continue
+
+    print "argparam:", argparam
+    print "argparts[1]", argparts[1]
+
     if argparam == "target":
         target = argparts[1]
     elif argparam == "mask": # Multiple masks are supported
         if "<#>" not in argparts[1]:
+            print "Adding page [[", argparts[1], "]]"
             pages.append(page.Page(site, title=argparts[1]))
-        elif:
+        else:
             archivenum = 1
-            archivepage = page.Page(site, title=argparts[1].replace("<#>", str(archivenum)))
+            prefix = ""
+            if argparts[1].startswith("/"):
+               prefix = currentpage.title
+            archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+            print "Trying page [[", archivepage.title, "]]"
             while archivepage.exists:
+                print "Adding page [[", archivepage.title, "]]"
                 pages.append(archivepage)
                 archivenum = archivenum + 1
-                archivepage = page.Page(site, title=argparts[1].replace("<#>", str(archivenum)))
-    elif argparam == "leading_zeroes":
-        zeroes = int(argparts[1])
+                archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
     elif argparam == "indexhere" and not indexhere:
         if argparts[1] == "yes":
-            indexhere = true
+            indexhere = True
             pages.append(currentpage)
-    elif argparam == "template":
+    elif argparam == "template" and "[[" in argparts[1]:
         newtemplate = argparts[1].replace("[", "").replace("]", "")
         if newtemplate.startswith("/"):
             template = page.Page(site, title=currentpage+newtemplate)
