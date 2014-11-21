@@ -6,7 +6,7 @@
 #    See LICENSE file    #
 ##########################
 
-from wikitools import wiki, categoty, page, pagelist
+from wikitools import wiki, category, page, pagelist, api
 from DemibotHelpers.utc import UTC
 import re
 import datetime
@@ -18,7 +18,7 @@ pword = ""
 uname = "Demibot"
 regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
-lowDate = datetime.datetime(1, 1, 1, 0, 0, 0, 0, UTC())
+lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC())
 highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC())
 unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC())
 
@@ -40,9 +40,16 @@ def parsemonth(m):
         'december' : 12,
     }[m]
 
-def dotalkpage(talkpage, rowformat):
+def dotalkpage(talkpage, rowformat1, rowformat2):
+    out = ""
+    row = 1
     for (topic, replies) in regex1.findall(talkpage.getWikiText()):
-        out = out + "\n" + rowformat
+        if row == 1:
+            out = out + "\n" + rowformat1
+            row = 2
+        elif row == 2:
+            out = out + "\n" + rowformat2
+            row = 1
         numReplies = 1
         lowestDate = highDate
         highestDate = lowDate
@@ -63,14 +70,14 @@ def dotalkpage(talkpage, rowformat):
         lastepoch = (highestDate - unixDate).total_seconds()
         last = highestDate.strftime(fmt)
         duration = highestDate - lowestDate
-        out.replace("%%topic%%:", topic)
-        out.replace("%%replies%%:", numReplies)
-        out.replace("%%link%%:", link)
-        out.replace("%%first%%:", first)
-        out.replace("%%firstepoch%%:", firstepoch)
-        out.replace("%%lastepoch%%:", lastepoch)
-        out.replace("%%last%%:", last)
-        out.replace("%%duration%%:", duration)
+        out = out.replace("%%topic%%", str(topic))
+        out = out.replace("%%replies%%", str(numReplies))
+        out = out.replace("%%link%%", str(link))
+        out = out.replace("%%first%%", str(first))
+        out = out.replace("%%firstepoch%%", str(firstepoch))
+        out = out.replace("%%lastepoch%%", str(lastepoch))
+        out = out.replace("%%last%%", str(last))
+        out = out.replace("%%duration%%", str(duration))
     return out
 
 # The main program itself
@@ -89,9 +96,14 @@ params = {"action" : "query", "generator" : "prefixsearch", "gpssearch" : "User_
 request = api.APIRequest(site, params)
 result = request.query()
 pages = pagelist.listFromQuery(site, result["query"]["pages"])
-rowformat = "|-\n| %%topic%% || %%replies%% || %%link%%"
+rowformat1 = "|-\n| %%topic%% || %%replies%% || %%link%%"
+rowformat2 = "|- style=\"background: #dddddd;\"\n| %%topic%% || %%replies%% || %%link%%"
+
+outbuf = ""
 
 for talkpage in pages:
-    print dotalkpage(talkpage, rowformat)
+    outbuf = outbuf + dotalkpage(talkpage, rowformat1, rowformat2)
+
+print outbuf
 
 exit(0)
