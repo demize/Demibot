@@ -18,6 +18,7 @@ pword = ""
 uname = "Demibot"
 regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
+regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\s\S]*?)}}")
 lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC())
 highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC())
 unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC())
@@ -95,7 +96,44 @@ logpage = page.Page(site, title="User:Demibot/log")
 params = {"action" : "query", "generator" : "prefixsearch", "gpssearch" : "User_Talk:Demize/Archive"}
 request = api.APIRequest(site, params)
 result = request.query()
-pages = pagelist.listFromQuery(site, result["query"]["pages"])
+currentpagetitle = "User Talk:Demize"
+currentpage = page.Page(site, title=currentpagetitle)
+arguments = regex3.search(currentpage.getWikiText()).replace("\n", "").split("|")
+
+target = ""
+pages = []
+zeroes = 0
+indexhere = false
+template = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template")
+
+for arg in arguments:
+    argparts = arg.split("=")
+    argparam = argparts[0].lower()
+    if argparam == "target":
+        target = argparts[1]
+    elif argparam == "mask": # Multiple masks are supported
+        if "<#>" not in argparts[1]:
+            pages.append(page.Page(site, title=argparts[1]))
+        elif:
+            archivenum = 1
+            archivepage = page.Page(site, title=argparts[1].replace("<#>", str(archivenum)))
+            while archivepage.exists:
+                pages.append(archivepage)
+                archivenum = archivenum + 1
+                archivepage = page.Page(site, title=argparts[1].replace("<#>", str(archivenum)))
+    elif argparam == "leading_zeroes":
+        zeroes = int(argparts[1])
+    elif argparam == "indexhere" and not indexhere:
+        if argparts[1] == "yes":
+            indexhere = true
+            pages.append(currentpage)
+    elif argparam == "template":
+        newtemplate = argparts[1].replace("[", "").replace("]", "")
+        if newtemplate.startswith("/"):
+            template = page.Page(site, title=currentpage+newtemplate)
+        else:
+            template = page.Page(site, title=newtemplate)
+
 rowformat1 = "|-\n| %%topic%% || %%replies%% || %%link%%"
 rowformat2 = "|- style=\"background: #dddddd;\"\n| %%topic%% || %%replies%% || %%link%%"
 
