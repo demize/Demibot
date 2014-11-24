@@ -18,12 +18,32 @@ pword = ""
 uname = "Demibot"
 regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
-regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\s\S]*?)}}")
-lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC())
-highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC())
-unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC())
+regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\\s\\S]*?)}}")
+regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))")
+lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC()) # Hopefully no comment dates are lower than January 1st, 1900
+highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC()) # Or higher than 23:59:59 December 31st, 9999
+unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC()) # Used for getting the epoch time of comments
+
+# Log in and set up logging
+
+with open("password.secret", "r") as pwfile:
+    pword = pwfile.readline().split('\n', 1)[0]
+
+site = wiki.Wiki("https://en.wikipedia.org/w/api.php")
+site.setUserAgent("Demibot/0.1 (https://github.com/demize/Demibot; demize on enwiki) using Python and Wikitools")
+site.login(uname, pword)
+
+logpage = page.Page(site, title="User:Demibot/log")
+logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
 
 # Important functions
+
+# Write to the log page
+
+def log(logtext):
+    logpage.edit(appendtext="~~~~~" + logtext + "<br />\n")
+
+# Returns a numeric value for each month
 def parsemonth(m):
     m = m.lower()
     return {
@@ -41,6 +61,7 @@ def parsemonth(m):
         'december' : 12,
     }[m]
 
+# Creates table rows for a talkpage based on two defined row formats
 def dotalkpage(talkpage, rowformat1, rowformat2):
     out = ""
     row = 1
@@ -81,39 +102,62 @@ def dotalkpage(talkpage, rowformat1, rowformat2):
         out = out.replace("%%duration%%", str(duration))
     return out
 
+def parsetemplate(templatepage):
+    template = {}
+    for (section, form) in regex4.findall(templatepage.getWikiText()):
+        if section is "END":
+            continue
+        elif section is "LEAD":
+            template['lead'] = form
+        elif section is "HEADER":
+            template['header'] = form
+        elif section is "ROW":
+            template['row'] = form
+        elif section is "ALTROW":
+            template['altrow'] = form
+        elif section is "FOOTER":
+            template['footer'] = form
+        elif section is "TAIL":
+            template['tail'] = form
+        else:
+            continue
+
+    if not template.has_key('lead'):
+        template['lead'] = ""
+    if not template.has_key('header'):
+        template['header'] = ""
+    if not template.has_key('row'):
+        template['row'] = ""
+    if not template.has_key('altrow'):
+        template['altrow'] = template['row']
+    if not template.has_key('footer'):
+        template['footer'] = ""
+    if not template.has_key('tail'):
+        template['tail'] = ""
+    return template
+
 # The main program itself
-
-with open("password.secret", "r") as pwfile:
-    pword = pwfile.readline().split('\n', 1)[0]
-
-site = wiki.Wiki("https://en.wikipedia.org/w/api.php")
-site.setUserAgent("Demibot/0.1 (https://github.com/demize/Demibot; demize on enwiki) using Python and Wikitools")
-site.login(uname, pword)
-
-logpage = page.Page(site, title="User:Demibot/log")
-logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
 
 params = {"action" : "query", "generator" : "embeddedin", "geititle" : "User:HBC_Archive_Indexerbot/OptIn", "geinamespace" : "1|3|5|7|9", "geilimit" : "500", "rawcontinue" : ""}
 request = api.APIRequest(site, params)
-logpage.edit(appendtext="~~~~~: Building list of talk pages to index the archives of...<br />\n")
+log("Building list of talk pages to index the archives of...")
 result = request.query()
 list = pagelist.listFromQuery(site, result['query']['pages'])
 
-logpage.edit(appendtext="~~~~~: List of pages contains " + str(len(list)) + " pages.<br />\n")
-#logpage.edit(appendtext="~~~~~: Generating index for User Talk:Demize only<br />\n")
-logpage.edit(appendtext="~~~~~: Skipping index generation and exiting...")
+log("List of pages contains " + str(len(list)) + " pages.")
+log("Generating index for User Talk:Demize only.")
+#logpage.edit(appendtext="~~~~~: Skipping index generation and exiting...")
 
-exit(0)
-
-currentpagetitle = "User Talk:Demize"
-currentpage = page.Page(site, title=currentpagetitle)
+currentpage = page.Page(site, title="User Talk:Demize")
 arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").split("|")
+
 
 target = ""
 pages = []
+masks = ""
 zeros = 0
 indexhere = False
-template = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template")
+templatepage = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template")
 
 # Make sure we get the leading zeros first
 for arg in arguments:
@@ -130,46 +174,50 @@ for arg in arguments:
     if len(argparts) < 2:
         continue
 
-    print "argparam:", argparam
-    print "argparts[1]", argparts[1]
-
     if argparam == "target":
         target = argparts[1]
     elif argparam == "mask": # Multiple masks are supported
         if "<#>" not in argparts[1]:
-            print "Adding page [[", argparts[1], "]]"
             pages.append(page.Page(site, title=argparts[1]))
+            masks = masks + ", " + argparts[1]
         else:
             archivenum = 1
             prefix = ""
             if argparts[1].startswith("/"):
                prefix = currentpage.title
             archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
-            print "Trying page [[", archivepage.title, "]]"
             while archivepage.exists:
-                print "Adding page [[", archivepage.title, "]]"
                 pages.append(archivepage)
                 archivenum = archivenum + 1
                 archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+            masks = masks + ", " + argparts[1]
     elif argparam == "indexhere" and not indexhere:
         if argparts[1] == "yes":
             indexhere = True
             pages.append(currentpage)
+        masks = masks + ", " + currentpage.title
     elif argparam == "template" and "[[" in argparts[1]:
         newtemplate = argparts[1].replace("[", "").replace("]", "")
         if newtemplate.startswith("/"):
-            template = page.Page(site, title=currentpage+newtemplate)
+            templatepage = page.Page(site, title=currentpage+newtemplate)
         else:
-            template = page.Page(site, title=newtemplate)
+            templatepage = page.Page(site, title=newtemplate)
 
-rowformat1 = "|-\n| %%topic%% || %%replies%% || %%link%%"
-rowformat2 = "|- style=\"background: #dddddd;\"\n| %%topic%% || %%replies%% || %%link%%"
+template = parsetemplate(templatepage)
 
-outbuf = ""
+rowformat1 = template['row']
+rowformat2 = template['altrow']
+
+boilerplate = "This is report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
+boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
+
+outbuf = template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n"
 
 for talkpage in pages:
     outbuf = outbuf + dotalkpage(talkpage, rowformat1, rowformat2)
 
-print outbuf
+outbuf = outbuf + template['footer'] + template['tail']
+
+currentpage.edit(text=outbuf)
 
 exit(0)
