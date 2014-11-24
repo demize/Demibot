@@ -19,7 +19,7 @@ uname = "Demibot"
 regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
 regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\\s\\S]*?)}}")
-regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))")
+regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))", re.M | re.U)
 lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC()) # Hopefully no comment dates are lower than January 1st, 1900
 highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC()) # Or higher than 23:59:59 December 31st, 9999
 unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC()) # Used for getting the epoch time of comments
@@ -41,7 +41,7 @@ logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
 # Write to the log page
 
 def log(logtext):
-    logpage.edit(appendtext="~~~~~" + logtext + "<br />\n")
+    logpage.edit(appendtext="~~~~~: " + logtext + "<br />\n")
 
 # Returns a numeric value for each month
 def parsemonth(m):
@@ -105,19 +105,19 @@ def dotalkpage(talkpage, rowformat1, rowformat2):
 def parsetemplate(templatepage):
     template = {}
     for (section, form) in regex4.findall(templatepage.getWikiText()):
-        if section is "END":
+        if section == "END":
             continue
-        elif section is "LEAD":
+        elif section == "LEAD":
             template['lead'] = form
-        elif section is "HEADER":
+        elif section == "HEADER":
             template['header'] = form
-        elif section is "ROW":
+        elif section == "ROW":
             template['row'] = form
-        elif section is "ALTROW":
+        elif section == "ALT ROW":
             template['altrow'] = form
-        elif section is "FOOTER":
+        elif section == "FOOTER":
             template['footer'] = form
-        elif section is "TAIL":
+        elif section == "TAIL":
             template['tail'] = form
         else:
             continue
@@ -146,10 +146,9 @@ list = pagelist.listFromQuery(site, result['query']['pages'])
 
 log("List of pages contains " + str(len(list)) + " pages.")
 log("Generating index for User Talk:Demize only.")
-#logpage.edit(appendtext="~~~~~: Skipping index generation and exiting...")
 
 currentpage = page.Page(site, title="User Talk:Demize")
-arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").split("|")
+arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").replace("}", "").replace("{", "").split("|")
 
 
 target = ""
@@ -175,7 +174,10 @@ for arg in arguments:
         continue
 
     if argparam == "target":
-        target = argparts[1]
+        if argparts[1].startswith("/"):
+            target = currentpage.title + argparts[1]
+        else:
+            target = argparts[1]
     elif argparam == "mask": # Multiple masks are supported
         if "<#>" not in argparts[1]:
             pages.append(page.Page(site, title=argparts[1]))
@@ -196,12 +198,19 @@ for arg in arguments:
             indexhere = True
             pages.append(currentpage)
         masks = masks + ", " + currentpage.title
-    elif argparam == "template" and "[[" in argparts[1]:
+    elif argparam == "template":
         newtemplate = argparts[1].replace("[", "").replace("]", "")
         if newtemplate.startswith("/"):
             templatepage = page.Page(site, title=currentpage+newtemplate)
+        elif newtemplate.startswith("./"):
+            templatepage = page.Page(site, title=currentpage+newtemplate[1:])
         else:
             templatepage = page.Page(site, title=newtemplate)
+
+if masks.startswith(","):
+    masks = masks[2:]
+
+targetpage = page.Page(site, title=target)
 
 template = parsetemplate(templatepage)
 
@@ -211,13 +220,15 @@ rowformat2 = template['altrow']
 boilerplate = "This is report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
 boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
 
-outbuf = template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n"
+outbuf = str(template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n")
 
 for talkpage in pages:
-    outbuf = outbuf + dotalkpage(talkpage, rowformat1, rowformat2)
+    outbuf = str(outbuf + dotalkpage(talkpage, rowformat1, rowformat2))
 
-outbuf = outbuf + template['footer'] + template['tail']
+outbuf = str(outbuf +"\n" + template['footer'] + "<br />\n" + template['tail'])
 
-currentpage.edit(text=outbuf)
+log("Writing archive index to " + targetpage.title + "...")
+
+targetpage.edit(text=outbuf)
 
 exit(0)
