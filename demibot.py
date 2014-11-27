@@ -34,7 +34,7 @@ site.setUserAgent("Demibot/0.1 (https://github.com/demize/Demibot; demize on enw
 site.login(uname, pword)
 
 logpage = page.Page(site, title="User:Demibot/log")
-logpage.edit(appendtext="~~~~~: Logged in to Wikipedia<br />\n")
+logpage.edit(text="~~~~~: Logged in to Wikipedia<br />\n")
 
 # Important functions
 
@@ -174,6 +174,7 @@ for currentpage in list:
     zeros = 0 # The number of leading zeros
     indexhere = False # Whether or not to index currentpage
     templatepage = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template") # The template to use
+    skip = False # Whether or not we've had any reason to skip the talk page
 
     # Make sure we get the leading zeros first
     for arg in arguments:
@@ -194,6 +195,14 @@ for currentpage in list:
                 target = currentpage.title + argparts[1]
             else:
                 target = argparts[1]
+            if not target.exists:
+                log("Not creating page " + target.title + "...")
+                skip = True
+                break
+            elif not ("<!-- Demibot can blank this page -->" in target.getWikiText() or "<!-- Legobot can blank this -->" in target.getWikiText() or "<!-- HBC Archive Indexerbot can blank this -->" in target.getWikiText()):
+                log("Target index page " + target.title + " doesn't have the permission tag on it, skipping...")
+                skip = True
+                break
         elif argparam == "mask": # Multiple masks are supported
             if "<#>" not in argparts[1]:
                 pages.append(page.Page(site, title=argparts[1]))
@@ -222,11 +231,20 @@ for currentpage in list:
                 templatepage = page.Page(site, title=currentpage+newtemplate[1:])
             else:
                 templatepage = page.Page(site, title=newtemplate)
+    if target == "" or not isinstance(target, Page):
+        log("No target specified on page " + currentpage.title + ", skipping...")
+        continue
+    if skip:
+        continue
+
     if masks.startswith(","): # Fairly tautologic, but good to check anyway
         masks = masks[2:]
     targetpage = page.Page(site, title=target)
-    template = parsetemplate(templatepage)
-    boilerplate = "This report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
+    try:
+        template = parsetemplate(templatepage)
+    except NoPage as error:
+        log("Template provided on " + currentpage.title + " does not exist, skipping generation of index...")
+    boilerplate = "<!-- Demibot can blank this -->\nThis report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
     boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
     outbuf = str(template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n")
     for talkpage in pages:
