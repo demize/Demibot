@@ -34,7 +34,7 @@ site.setUserAgent("Demibot/0.1 (https://github.com/demize/Demibot; demize on enw
 site.login(uname, pword)
 
 logpage = page.Page(site, title="User:Demibot/log")
-logpage.edit(text="~~~~~: Logged in to Wikipedia<br />\n")
+logpage.edit(text="~~~~~: Logged in to Wikipedia<br />\n", summary="Restarting log for new run")
 
 # Important functions
 
@@ -165,92 +165,96 @@ log("List of pages contains " + str(len(list)) + " pages.")
 log("Beginning index generation.")
 
 for currentpage in list:
-    # Get the list of arguments provided in the template on the talk page
-    arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").replace("}", "").replace("{", "").split("|")
-    # Set up variables for processing
-    target = "" # The target page
-    pages = [] # The list of pages to generate indexes of
-    masks = "" # The list of masks used
-    zeros = 0 # The number of leading zeros
-    indexhere = False # Whether or not to index currentpage
-    templatepage = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template") # The template to use
-    skip = False # Whether or not we've had any reason to skip the talk page
-
-    # Make sure we get the leading zeros first
-    for arg in arguments:
-        argparts = arg.split("=", 1)
-        argparam = argparts[0].lower() # Much easier to compare if it's all lowercase
-        if argparam == "leading_zeros":
-            zeros = int(argparts[1])
-            break
-
-    # Now loop through everything else
-    for arg in arguments:
-        argparts = arg.split("=", 1)
-        argparam = argparts[0].lower()
-        if len(argparts) < 2: # No use for us to check parameters if they're empty
-            continue
-        if argparam == "target":
-            if argparts[1].startswith("/"):
-                target = currentpage.title + argparts[1]
-            else:
-                target = argparts[1]
-            if not target.exists:
-                log("Not creating page " + target.title + "...")
-                skip = True
-                break
-            elif not ("<!-- Demibot can blank this page -->" in target.getWikiText() or "<!-- Legobot can blank this -->" in target.getWikiText() or "<!-- HBC Archive Indexerbot can blank this -->" in target.getWikiText()):
-                log("Target index page " + target.title + " doesn't have the permission tag on it, skipping...")
-                skip = True
-                break
-        elif argparam == "mask": # Multiple masks are supported
-            if "<#>" not in argparts[1]:
-                pages.append(page.Page(site, title=argparts[1]))
-                masks = masks + ", " + argparts[1]
-            else:
-                archivenum = 1
-                prefix = ""
-                if argparts[1].startswith("/"):
-                   prefix = currentpage.title
-                archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
-                while archivepage.exists:
-                    pages.append(archivepage)
-                    archivenum = archivenum + 1
-                    archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
-                masks = masks + ", " + argparts[1]
-        elif argparam == "indexhere" and not indexhere: # Only add the current page to the list once
-            if argparts[1] == "yes":
-                indexhere = True
-                pages.append(currentpage)
-            masks = masks + ", " + currentpage.title
-        elif argparam == "template":
-            newtemplate = argparts[1].replace("[", "").replace("]", "")
-            if newtemplate.startswith("/"):
-                templatepage = page.Page(site, title=currentpage+newtemplate)
-            elif newtemplate.startswith("./"):
-                templatepage = page.Page(site, title=currentpage+newtemplate[1:])
-            else:
-                templatepage = page.Page(site, title=newtemplate)
-    if target == "" or not isinstance(target, Page):
-        log("No target specified on page " + currentpage.title + ", skipping...")
-        continue
-    if skip:
-        continue
-
-    if masks.startswith(","): # Fairly tautologic, but good to check anyway
-        masks = masks[2:]
-    targetpage = page.Page(site, title=target)
     try:
-        template = parsetemplate(templatepage)
-    except NoPage as error:
-        log("Template provided on " + currentpage.title + " does not exist, skipping generation of index...")
-    boilerplate = "<!-- Demibot can blank this -->\nThis report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
-    boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
-    outbuf = str(template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n")
-    for talkpage in pages:
-        outbuf = str(outbuf + dotalkpage(talkpage, template['row'], template['altrow']))
-    outbuf = str(outbuf +"\n" + template['footer'] + "<br />\n" + template['tail'])
-    log("Writing archive index to " + targetpage.title + "...")
-    targetpage.edit(text=outbuf)
+        # Get the list of arguments provided in the template on the talk page
+        arguments = regex3.search(currentpage.getWikiText()).group(0).replace("\n", "").replace("}", "").replace("{", "").split("|")
+        # Set up variables for processing
+        target = "" # The target page
+        pages = [] # The list of pages to generate indexes of
+        masks = "" # The list of masks used
+        zeros = 0 # The number of leading zeros
+        indexhere = False # Whether or not to index currentpage
+        templatepage = page.Page(site, title="User:HBC_Archive_Indexerbot/default_template") # The template to use
+        skip = False # Whether or not we've had any reason to skip the talk page
+
+        # Make sure we get the leading zeros first
+        for arg in arguments:
+            argparts = arg.split("=", 1)
+            argparam = argparts[0].lower() # Much easier to compare if it's all lowercase
+            if argparam == "leading_zeros":
+                zeros = int(argparts[1])
+                break
+
+        # Now loop through everything else
+        for arg in arguments:
+            argparts = arg.split("=", 1)
+            argparam = argparts[0].lower()
+            if len(argparts) < 2: # No use for us to check parameters if they're empty
+                continue
+            if argparam == "target":
+                if argparts[1].startswith("/"):
+                    target = currentpage.title + argparts[1]
+                else:
+                    target = argparts[1]
+                if not target.exists:
+                    log("Not creating page " + target.title + "...")
+                    skip = True
+                    break
+                elif not ("<!-- Demibot can blank this page -->" in target.getWikiText() or "<!-- Legobot can blank this -->" in target.getWikiText() or "<!-- HBC Archive Indexerbot can blank this -->" in target.getWikiText()):
+                    log("Target index page " + target.title + " doesn't have the permission tag on it, skipping...")
+                    skip = True
+                    break
+            elif argparam == "mask": # Multiple masks are supported
+                if "<#>" not in argparts[1]:
+                    pages.append(page.Page(site, title=argparts[1]))
+                    masks = masks + ", " + argparts[1]
+                else:
+                    archivenum = 1
+                    prefix = ""
+                    if argparts[1].startswith("/"):
+                       prefix = currentpage.title
+                    archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+                    while archivepage.exists:
+                        pages.append(archivepage)
+                        archivenum = archivenum + 1
+                        archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+                    masks = masks + ", " + argparts[1]
+            elif argparam == "indexhere" and not indexhere: # Only add the current page to the list once
+                if argparts[1] == "yes":
+                    indexhere = True
+                    pages.append(currentpage)
+                masks = masks + ", " + currentpage.title
+            elif argparam == "template":
+                newtemplate = argparts[1].replace("[", "").replace("]", "")
+                if newtemplate.startswith("/"):
+                    templatepage = page.Page(site, title=currentpage+newtemplate)
+                elif newtemplate.startswith("./"):
+                    templatepage = page.Page(site, title=currentpage+newtemplate[1:])
+                else:
+                    templatepage = page.Page(site, title=newtemplate)
+        if target == "" or not isinstance(target, Page):
+            log("No target specified on page " + currentpage.title + ", skipping...")
+            continue
+        if skip:
+            continue
+
+        if masks.startswith(","): # Fairly tautologic, but good to check anyway
+            masks = masks[2:]
+        targetpage = page.Page(site, title=target)
+        try:
+            template = parsetemplate(templatepage)
+        except NoPage as error:
+            log("Template provided on " + currentpage.title + " does not exist, skipping generation of index...")
+        boilerplate = "<!-- Demibot can blank this -->\nThis report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
+        boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
+        outbuf = str(template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n")
+        for talkpage in pages:
+            outbuf = str(outbuf + dotalkpage(talkpage, template['row'], template['altrow']))
+        outbuf = str(outbuf +"\n" + template['footer'] + "<br />\n" + template['tail'])
+        log("Writing archive index to " + targetpage.title + "...")
+        targetpage.edit(text=outbuf, summary="Generating archive index due to user request) (bot")
+    except Exception:
+        log("An unexpected error occurred, skipping page" + currentpage.title)
+        continue
 
 exit(0)
