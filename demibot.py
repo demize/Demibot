@@ -9,6 +9,8 @@
 from wikitools import wiki, category, page, pagelist, api
 from wikitools.page import NoPage, Page
 from DemibotHelpers.utc import UTC
+from DemibotHelpers.wikilink import Wikilink, BadWikilinkException
+from DemibotHelper import MLStripper
 import sys, os
 import re
 from datetime import datetime, timedelta
@@ -22,6 +24,7 @@ regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
 regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\\s\\S]*?)}}") # regex for processing the Optin template
 regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))", re.M | re.U) # regex for processing the index template
+regex5 = re.compile("(\\[\\[.*?\\]\\])")
 lowDate = datetime(1900, 1, 1, 0, 0, 0, 0, UTC()) # Hopefully no comment dates are lower than January 1st, 1900
 highDate = datetime(9999, 12, 31, 23, 59, 59, 0, UTC()) # Or higher than 23:59:59 December 31st, 9999
 unixDate = datetime(1970, 1, 1, 0, 0, 0, 0, UTC()) # Used for getting the epoch time of comments
@@ -40,8 +43,11 @@ logpage.edit(text="~~~~~: Logged in to Wikipedia<br />\n", summary="Restarting l
 
 # Important functions
 
-# Write to the log page
+# Parse wikilinks using the Wikilink class.
+def replWikilink(match):
+    return Wikilink(match.group(0)).getLinkText()
 
+# Write to the log page
 def log(logtext):
     logpage.edit(appendtext="~~~~~: " + logtext + "<br />\n")
 
@@ -115,7 +121,7 @@ def dotalkpage(talkpage, rowformat1, rowformat2):
             duration = highestDate - lowestDate
         out = out.replace("%%topic%%", str(topic))
         out = out.replace("%%replies%%", str(numReplies))
-        out = out.replace("%%link%%", str(link))
+        out = out.replace("%%link%%", MLStripper.html_to_text(regex5.sub(replWikilink, str(link))))
         out = out.replace("%%first%%", str(first))
         out = out.replace("%%firstepoch%%", str(firstepoch))
         out = out.replace("%%lastepoch%%", str(lastepoch))
