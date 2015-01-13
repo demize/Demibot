@@ -20,7 +20,7 @@ import urllib
 # Important variables
 pword = ""
 uname = "Demibot"
-regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
+regex1 = re.compile("^={2,} ?(.*?) ?={2,}$([\\n\\S\\s]*?)(?=(?:^={2,} ?.*? ?={2,}$)|(?:\\Z))", re.M | re.U) # regex for finding headers and replies
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
 regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\\s\\S]*?)}}") # regex for processing the Optin template
 regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))", re.M | re.U) # regex for processing the index template
