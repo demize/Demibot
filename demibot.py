@@ -7,9 +7,11 @@
 ##########################
 
 from wikitools import wiki, category, page, pagelist, api
+from wikitools.page import NoPage, Page
 from DemibotHelpers.utc import UTC
+import sys, os
 import re
-import datetime
+from datetime import datetime, timedelta
 import urllib
 
 
@@ -20,9 +22,9 @@ regex1 = re.compile("^== ?(.*?) ?==$([\\n\\S\\s]*?)(?=(?:^== ?.*? ?==$)|(?:\\Z))
 regex2 = re.compile(".*?(?P<hours>\\d{1,2}):(?P<minutes>\\d{1,2}), (?P<day>\\d{1,2}) (?P<month>[\\w]*) (?P<year>\\d{4}) \\(?UTC\\)?") # regex for finding timestamps
 regex3 = re.compile("{{User:HBC Archive Indexerbot/OptIn(?P<arguments>[\\s\\S]*?)}}") # regex for processing the Optin template
 regex4 = re.compile("^<!-- (?P<section>[\\S\\s]*?) -->$\n*(?P<form>[\\n\\S\\s]*?)\\n*?(?=(?:<!-- [\\S\\s]*? -->$)|(?:\\Z))", re.M | re.U) # regex for processing the index template
-lowDate = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, UTC()) # Hopefully no comment dates are lower than January 1st, 1900
-highDate = datetime.datetime(9999, 12, 31, 23, 59, 59, 0, UTC()) # Or higher than 23:59:59 December 31st, 9999
-unixDate = datetime.datetime(1970, 1, 1, 0, 0, 0, 0, UTC()) # Used for getting the epoch time of comments
+lowDate = datetime(1900, 1, 1, 0, 0, 0, 0, UTC()) # Hopefully no comment dates are lower than January 1st, 1900
+highDate = datetime(9999, 12, 31, 23, 59, 59, 0, UTC()) # Or higher than 23:59:59 December 31st, 9999
+unixDate = datetime(1970, 1, 1, 0, 0, 0, 0, UTC()) # Used for getting the epoch time of comments
 
 # Log in and set up logging
 
@@ -62,6 +64,8 @@ def parsemonth(m):
     }[m]
 
 def formatduration(duration):
+    if isinstance(duration, str):
+        return duration
     days = duration.days
     hours, remainder = divmod(duration.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -89,7 +93,7 @@ def dotalkpage(talkpage, rowformat1, rowformat2):
                 numReplies = numReplies +1
             m = regex2.match(line)
             if m is not None:
-                currentDate = datetime.datetime(int(m.group("year")), parsemonth(m.group("month")), int(m.group("day")), int(m.group("hours")), int(m.group("minutes")), 0, 0, UTC())
+                currentDate = datetime(int(m.group("year")), parsemonth(m.group("month")), int(m.group("day")), int(m.group("hours")), int(m.group("minutes")), 0, 0, UTC())
                 if currentDate < lowestDate:
                     lowestDate = currentDate
                 if currentDate > highestDate:
@@ -156,13 +160,18 @@ def parsetemplate(templatepage):
 # The main program itself
 
 # Make a list of all the pages to index the archives of
-params = {"action" : "query", "generator" : "embeddedin", "geititle" : "User:HBC_Archive_Indexerbot/OptIn", "geinamespace" : "1|3|5|7|9", "geilimit" : "500", "rawcontinue" : ""}
+'''params = {"action" : "query", "generator" : "embeddedin", "geititle" : "User:HBC_Archive_Indexerbot/OptIn", "geinamespace" : "1|3|5|7|9", "geilimit" : "500", "rawcontinue" : ""}
 request = api.APIRequest(site, params)
 log("Building list of talk pages to index the archives of...")
 result = request.query()
-list = pagelist.listFromQuery(site, result['query']['pages'])
+list = pagelist.listFromQuery(site, result['query']['pages'])'''
+
+titles = ["User_Talk:Demize", "User_Talk:-revi", "User_talk:Addshore"]
+log("Building manual list of talk pages to index the archives of...")
+list = pagelist.listFromTitles(site, titles)
+
 log("List of pages contains " + str(len(list)) + " pages.")
-log("Beginning index generation.")
+log("Beginning index generation...")
 
 for currentpage in list:
     try:
@@ -193,46 +202,49 @@ for currentpage in list:
                 continue
             if argparam == "target":
                 if argparts[1].startswith("/"):
-                    target = currentpage.title + argparts[1]
+                    target = page.Page(site, currentpage.title + argparts[1].rstrip())
                 else:
-                    target = argparts[1]
+                    target = page.Page(site, argparts[1].rstrip())
                 if not target.exists:
                     log("Not creating page " + target.title + "...")
                     skip = True
                     break
-                elif not ("<!-- Demibot can blank this page -->" in target.getWikiText() or "<!-- Legobot can blank this -->" in target.getWikiText() or "<!-- HBC Archive Indexerbot can blank this -->" in target.getWikiText()):
+                elif not ("<!-- Demibot can blank this -->" in target.getWikiText() or "<!-- Legobot can blank this -->" in target.getWikiText() or "<!-- HBC Archive Indexerbot can blank this -->" in target.getWikiText()):
                     log("Target index page " + target.title + " doesn't have the permission tag on it, skipping...")
                     skip = True
                     break
             elif argparam == "mask": # Multiple masks are supported
                 if "<#>" not in argparts[1]:
-                    pages.append(page.Page(site, title=argparts[1]))
-                    masks = masks + ", " + argparts[1]
+                    prefix = ""
+                    if argparts[1].startswith("/"):
+                       prefix = currentpage.title
+                    pages.append(page.Page(site, title=prefix + argparts[1].rstrip()))
+                    masks = masks + ", " + argparts[1].rstrip()
                 else:
                     archivenum = 1
                     prefix = ""
                     if argparts[1].startswith("/"):
                        prefix = currentpage.title
-                    archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+                    archivepage = page.Page(site, title=prefix + argparts[1].rstrip().replace("<#>", str(archivenum).zfill(zeros + 1)))
                     while archivepage.exists:
                         pages.append(archivepage)
                         archivenum = archivenum + 1
-                        archivepage = page.Page(site, title=prefix + argparts[1].replace("<#>", str(archivenum).zfill(zeros + 1)))
+                        archivepage = page.Page(site, title=prefix + argparts[1].rstrip().replace("<#>", str(archivenum).zfill(zeros + 1)))
                     masks = masks + ", " + argparts[1]
             elif argparam == "indexhere" and not indexhere: # Only add the current page to the list once
-                if argparts[1] == "yes":
+                if argparts[1].rstrip() == "yes":
                     indexhere = True
                     pages.append(currentpage)
                 masks = masks + ", " + currentpage.title
             elif argparam == "template":
-                newtemplate = argparts[1].replace("[", "").replace("]", "")
+                newtemplate = argparts[1].rstrip().replace("[", "").replace("]", "")
                 if newtemplate.startswith("/"):
                     templatepage = page.Page(site, title=currentpage+newtemplate)
                 elif newtemplate.startswith("./"):
                     templatepage = page.Page(site, title=currentpage+newtemplate[1:])
                 else:
                     templatepage = page.Page(site, title=newtemplate)
-        if target == "" or not isinstance(target, Page):
+        if not isinstance(target, Page):
             log("No target specified on page " + currentpage.title + ", skipping...")
             continue
         if skip:
@@ -240,21 +252,26 @@ for currentpage in list:
 
         if masks.startswith(","): # Fairly tautologic, but good to check anyway
             masks = masks[2:]
-        targetpage = page.Page(site, title=target)
         try:
             template = parsetemplate(templatepage)
         except NoPage as error:
             log("Template provided on " + currentpage.title + " does not exist, skipping generation of index...")
+            continue
         boilerplate = "<!-- Demibot can blank this -->\nThis report was generated because of the request on " + currentpage.title + ". It matches the masks '''" + masks + "'''.<br />\n"
         boilerplate = boilerplate + "This report was generated at ~~~~~ by [[User:Demibot|Demibot]].<br />\n"
         outbuf = str(template['lead'] + "<br />\n" + boilerplate + template['header'] + "\n")
         for talkpage in pages:
-            outbuf = str(outbuf + dotalkpage(talkpage, template['row'], template['altrow']))
+            try:
+                outbuf = str(outbuf + dotalkpage(talkpage, template['row'], template['altrow']))
+            except NoPage as error:
+                log("The page " + talkpage.title + " does not exist. Typo?")
         outbuf = str(outbuf +"\n" + template['footer'] + "<br />\n" + template['tail'])
-        log("Writing archive index to " + targetpage.title + "...")
-        targetpage.edit(text=outbuf, summary="Generating archive index due to user request) (bot")
-    except Exception:
+        log("Writing archive index to " + target.title + "...")
+        target.edit(text=outbuf, summary="Generating archive index due to user request) (bot")
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
         log("An unexpected error occurred, skipping page" + currentpage.title)
+        log("The details of the error are: " + str(exc_type) + " at " + str(exc_tb.tb_lineno) + "(\"" + str(e) + "\")")
         continue
 
 exit(0)
